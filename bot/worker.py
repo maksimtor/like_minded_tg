@@ -2,6 +2,7 @@ import asyncio
 from typing import List
 
 from clients.tg import TgClient
+from clients.redis import RedisClient
 from tools import app_data
 
 from tools import Profile, ProfileDb
@@ -9,10 +10,10 @@ from tools import Profile, ProfileDb
 class Worker:
     def __init__(self, token: str, queue: asyncio.Queue, concurrent_workers: int):
         self.tg_client = TgClient(token)
+        self.redis_client = RedisClient()
         self.queue = queue
         self.concurrent_workers = concurrent_workers
         self._tasks: List[asyncio.Task] = []
-        self.state = {}
 
     async def handle_update(self, upd):
         if 'callback_query' in upd:
@@ -22,25 +23,27 @@ class Worker:
             message = upd['message']['text']
             tg_id = upd['message']['chat']['id']
         # creating profile
+        tg_id_state = str(tg_id) + "_state"
+        tg_id_data = str(tg_id) + "_data"
+        r_client = self.redis_client.r
         if message == 'start':
-            self.state[tg_id] = {'state': 'creating_profile', 'data': {}}
+            r_client.set(tg_id_state, 'creating_profile')
+            r_client.delete(tg_id_data)
+            r_client.hset(tg_id_data, mapping = {'initial': ''})
             await self.tg_client.send_message(tg_id, 'Give me your name')
-        elif self.state.get(tg_id, None) and self.state[tg_id]['state'] == 'creating_profile':
+        elif r_client.exists(tg_id_state) and r_client.get(tg_id_state) == 'creating_profile':
             for key, value in app_data.field_next_question.items():
-                if key not in self.state[tg_id]['data']:
-                    if key in ['interests', 'music']:
-                        message = list(message.split(','))
-                    elif key in ['pol_coords', 'geo_coords', 'personality', 'age_pref']:
-                        message = tuple(map(float, message.split(',')))
-                    self.state[tg_id]['data'][key] = message
+                if key not in r_client.hgetall(tg_id_data):
+                    r_client.hset(tg_id_data, key, message)
                     if key == 'goal':
-                        self.state[tg_id]['data']['tg_id'] = tg_id
-                        profile = Profile.Profile(self.state[tg_id]['data'])
+                        r_client.hset(tg_id_data, 'tg_id', tg_id)
+                        profile = Profile.Profile(r_client.hgetall(tg_id_data))
                         profile_db = ProfileDb.ProfileDb(profile)
                         profile_db.connect()
                         profile_db.save_to_db()
                         profile_db.disconnect()
-                        self.state[tg_id] = {}
+                        r_client.delete(tg_id_data)
+                        r_client.set(tg_id_state, 'nothing')
                         await self.tg_client.send_message(tg_id, "Done")
                     else: await self.tg_client.send_message(tg_id, value)
                     break

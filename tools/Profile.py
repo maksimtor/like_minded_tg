@@ -4,17 +4,17 @@ class UserInfo:
 	def __init__(self, data):
 		self.name = data["name"]
 		self.description = data.get("description", None)
-		self.interests = data.get("interests", [])
-		self.music = data.get("music", [])
-		self.pol_coords = data.get("pol_coords", None)
-		self.geo_coords = data.get("geo_coords", None)
+		self.interests = data.get("interests", []) if isinstance(data.get("interests", []), list) else list(data.get("interests", '').split(','))
+		self.music = data.get("music", []) if isinstance(data.get("music", []), list) else list(data.get("music", '').split(','))
+		self.pol_coords = data.get("pol_coords", None) if isinstance(data.get("pol_coords", tuple()), tuple) else tuple(map(float, data.get("pol_coords", tuple()).split(',')))
+		self.geo_coords = data.get("geo_coords", None) if isinstance(data.get("geo_coords", tuple()), tuple) else tuple(map(float, data.get("geo_coords", tuple()).split(',')))
 		self.age = data.get("age", None)
 		self.gender = data.get("gender", None)
-		self.personality = data.get("personality", None)
+		self.personality = data.get("personality", None) if isinstance(data.get("personality", tuple()), tuple) else tuple(map(float, data.get("personality", tuple()).split(',')))
 
 class UserPrefs:
 	def __init__(self, data):
-		self.age_pref = data.get("age_pref", (18, 100, 25))
+		self.age_pref = data.get("age_pref", (18, 100, 25)) if isinstance(data.get("age_pref", (18, 100, 25)), tuple) else tuple(map(float, data.get("age_pref", '18, 100, 25').split(',')))
 		self.area_restrict = data.get("area_restrict", 20000)
 		self.goal = data.get("goal", None)
 		self.gender_pref = data.get("gender_pref", None)
@@ -73,7 +73,7 @@ class Profile:
 			"photo": self.photo
 		}
 
-	def public_data(self, main_profile_coords = (0, 0)):
+	def public_data(self, main_profile_coords = (5, 5)):
 		return {
 			"name": self.user_info.name,
 			"distance": geodesic(self.user_info.geo_coords, main_profile_coords).km,
